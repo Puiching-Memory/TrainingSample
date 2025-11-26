@@ -66,6 +66,11 @@ jobs:
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
+    - name: Remove conflicting clippy binaries (if they exist)
+      run: |
+        rm -f ~/.cargo/bin/cargo-clippy
+        rm -f ~/.cargo/bin/clippy-driver
+
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -166,6 +171,11 @@ jobs:
       with:
         python-version: ${{ matrix.python-version }}
 
+    - name: Remove conflicting clippy binaries (if they exist)
+      run: |
+        rm -f ~/.cargo/bin/cargo-clippy
+        rm -f ~/.cargo/bin/clippy-driver
+
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -257,6 +267,11 @@ jobs:
       with:
         python-version: 3.11
 
+    - name: Remove conflicting clippy binaries (if they exist)
+      run: |
+        rm -f ~/.cargo/bin/cargo-clippy
+        rm -f ~/.cargo/bin/clippy-driver
+
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -272,12 +287,85 @@ jobs:
     - name: Run pre-commit
       run: pre-commit run --all-files
 
+  cross-compile-opencv-windows:
+    name: Cross-compile OpenCV for Windows
+    runs-on: ubuntu-latest
+    outputs:
+      artifact-name: opencv-windows-x64
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install MinGW-w64 cross-compilation toolchain
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 cmake wget
+
+    - name: Cross-compile OpenCV 4.12 for Windows
+      run: |
+        echo "Cross-compiling OpenCV 4.12 for Windows x64..."
+        cd /tmp
+        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
+        tar -xzf 4.12.0.tar.gz
+        cd opencv-4.12.0
+        mkdir build-windows
+        cd build-windows
+        
+        # Create MinGW-w64 toolchain file
+        cat > toolchain.cmake << 'EOF'
+        set(CMAKE_SYSTEM_NAME Windows)
+        set(CMAKE_SYSTEM_PROCESSOR x86_64)
+        set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
+        set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
+        set(CMAKE_RC_COMPILER x86_64-w64-mingw32-windres)
+        set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
+        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+        EOF
+        
+        cmake \
+          -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake \
+          -DCMAKE_BUILD_TYPE=RELEASE \
+          -DCMAKE_INSTALL_PREFIX=/tmp/opencv-windows \
+          -DWITH_CUDA=OFF \
+          -DWITH_OPENGL=OFF \
+          -DWITH_OPENCL=OFF \
+          -DWITH_TBB=OFF \
+          -DWITH_IPP=OFF \
+          -DWITH_1394=OFF \
+          -DWITH_V4L=OFF \
+          -DWITH_GTK=OFF \
+          -DBUILD_TESTS=OFF \
+          -DBUILD_PERF_TESTS=OFF \
+          -DBUILD_EXAMPLES=OFF \
+          -DBUILD_opencv_python2=OFF \
+          -DBUILD_opencv_python3=OFF \
+          -DBUILD_opencv_java=OFF \
+          ..
+        
+        make -j$(nproc)
+        make install
+
+    - name: Package OpenCV for Windows
+      run: |
+        cd /tmp
+        tar -czf opencv-windows-x64.tar.gz -C opencv-windows .
+
+    - name: Upload cross-compiled OpenCV
+      uses: actions/upload-artifact@v4
+      with:
+        name: opencv-windows-x64
+        path: /tmp/opencv-windows-x64.tar.gz
+        retention-days: 1
+
   build-wheels:
     name: Build wheels
     runs-on: ${{ matrix.os }}
+    # Note: Windows now downloads pre-built OpenCV directly, so cross-compile job dependency removed
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest]
+        os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
     - uses: actions/checkout@v4
@@ -332,7 +420,117 @@ jobs:
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
 
-
+    - name: Install OpenCV and LLVM dependencies (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        # Use pre-installed LLVM/Clang on GitHub Actions Windows runner
+        # Set CC and CXX to use Clang explicitly (required for opencv-rust bindings)
+        echo "CC=clang" >> $env:GITHUB_ENV
+        echo "CXX=clang++" >> $env:GITHUB_ENV
+        
+        # Verify Clang version (should be 19.0.0+)
+        clang --version
+        
+        # Download and extract pre-built OpenCV for Windows (MSVC)
+        Write-Host 'Downloading pre-built OpenCV 4.12.0 for Windows (MSVC)...'
+        $opencvRoot = 'C:\opencv'
+        New-Item -ItemType Directory -Force -Path $opencvRoot | Out-Null
+        
+        # Download OpenCV Windows installer
+        $opencvUrl = 'https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe'
+        $opencvInstaller = "$env:TEMP\opencv-installer.exe"
+        $extractDir = "$env:TEMP\opencv-extract"
+        
+        Invoke-WebRequest -Uri $opencvUrl -OutFile $opencvInstaller -UseBasicParsing
+        
+        # Extract the self-extracting archive
+        Write-Host 'Extracting OpenCV installer...'
+        New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
+        Start-Process -FilePath $opencvInstaller -ArgumentList "-o$extractDir", "-y" -Wait -NoNewWindow
+        
+        # Copy build directory to target location
+        $buildDir = Join-Path $extractDir "opencv\build"
+        if (Test-Path $buildDir) {
+          Copy-Item -Path "$buildDir\*" -Destination $opencvRoot -Recurse -Force
+        } else {
+          # Fallback: copy everything
+          Copy-Item -Path "$extractDir\opencv\*" -Destination $opencvRoot -Recurse -Force
+        }
+        
+        # Clean up
+        Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
+        Remove-Item -Path $opencvInstaller -Force -ErrorAction SilentlyContinue
+        
+        # Find OpenCV library path - pre-built uses x64/vcXX/lib structure
+        $opencvLibPath = $null
+        $possibleLibPaths = @(
+          "$opencvRoot\x64\vc16\lib",
+          "$opencvRoot\x64\vc15\lib",
+          "$opencvRoot\x64\vc14\lib"
+        )
+        
+        foreach ($path in $possibleLibPaths) {
+          if (Test-Path $path) {
+            $calib3dLib = Join-Path $path "opencv_calib3d.lib"
+            if (Test-Path $calib3dLib) {
+              $opencvLibPath = $path
+              Write-Host "Found OpenCV library path: $opencvLibPath"
+              break
+            }
+          }
+        }
+        
+        if (-not $opencvLibPath) {
+          # Search recursively
+          $foundLibs = Get-ChildItem -Path $opencvRoot -Recurse -Filter "opencv_calib3d.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($foundLibs) {
+            $opencvLibPath = $foundLibs.Directory.FullName
+            Write-Host "Found OpenCV library path by searching: $opencvLibPath"
+          } else {
+            throw "Could not locate opencv_calib3d.lib"
+          }
+        }
+        
+        # Find include and bin paths
+        $opencvIncludePath = "$opencvRoot\include"
+        if (-not (Test-Path "$opencvIncludePath\opencv2\opencv.hpp")) {
+          $foundIncludes = Get-ChildItem -Path $opencvRoot -Recurse -Filter "opencv2\opencv.hpp" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($foundIncludes) {
+            $opencvIncludePath = $foundIncludes.Directory.Parent.FullName
+          }
+        }
+        
+        $opencvBinPath = $opencvLibPath -replace '\\lib$', '\bin'
+        if (Test-Path $opencvBinPath) {
+          echo "$opencvBinPath" >> $env:GITHUB_PATH
+        }
+        
+        # Set environment variables - use absolute paths
+        $opencvLibPathAbs = (Resolve-Path $opencvLibPath).Path
+        $opencvIncludePathAbs = (Resolve-Path $opencvIncludePath).Path
+        
+        echo "OPENCV_DIR=$opencvRoot" >> $env:GITHUB_ENV
+        
+        # Set LIB environment variable - CRITICAL for linker to find .lib files
+        if ($env:LIB) {
+          echo "LIB=$env:LIB;$opencvLibPathAbs" >> $env:GITHUB_ENV
+        } else {
+          echo "LIB=$opencvLibPathAbs" >> $env:GITHUB_ENV
+        }
+        Write-Host "Set LIB to include: $opencvLibPathAbs"
+        
+        # Set opencv-rust environment variables
+        echo "OPENCV_LINK_PATHS=$opencvLibPathAbs" >> $env:GITHUB_ENV
+        echo "OPENCV_INCLUDE_PATHS=$opencvIncludePathAbs" >> $env:GITHUB_ENV
+        
+        # Verify
+        $calib3dLib = "$opencvLibPathAbs\opencv_calib3d.lib"
+        if (Test-Path $calib3dLib) {
+          Write-Host "✓ Verified opencv_calib3d.lib exists: $calib3dLib"
+        } else {
+          throw "opencv_calib3d.lib not found at: $calib3dLib"
+        }
 
     - name: Set up Python
       uses: actions/setup-python@v4
@@ -345,7 +543,12 @@ jobs:
         toolchain: 1.89
 
     - name: Install maturin (Linux/macOS)
+      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
+
+    - name: Install maturin (Windows)
+      if: runner.os == 'Windows'
+      run: pip install maturin
 
     - name: Install OpenCV (macOS)
       if: runner.os == 'macOS'
@@ -369,6 +572,35 @@ jobs:
       if: runner.os == 'macOS'
       run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv,metal
 
+    - name: Verify OpenCV setup (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: |
+        Write-Host "Verifying OpenCV setup before build..."
+        Write-Host "LIB environment variable: $env:LIB"
+        Write-Host "OPENCV_DIR: $env:OPENCV_DIR"
+        Write-Host "OPENCV_LINK_PATHS: $env:OPENCV_LINK_PATHS"
+        
+        # Verify opencv_calib3d.lib exists in LIB path
+        if ($env:LIB) {
+          $libPaths = $env:LIB -split ';'
+          foreach ($libPath in $libPaths) {
+            if ($libPath) {
+              $calib3dLib = Join-Path $libPath "opencv_calib3d.lib"
+              Write-Host "Checking: $calib3dLib"
+              if (Test-Path $calib3dLib) {
+                Write-Host "✓ Found opencv_calib3d.lib at: $calib3dLib"
+              } else {
+                Write-Host "✗ opencv_calib3d.lib not found at: $libPath"
+              }
+            }
+          }
+        }
+
+    - name: Build wheels (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
     - name: Upload wheels
       uses: actions/upload-artifact@v4
