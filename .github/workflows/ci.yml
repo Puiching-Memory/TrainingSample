@@ -10,600 +10,147 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
-  rust-tests:
-    name: Rust Tests
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install OpenCV and LLVM dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
-        # Set environment variables for LLVM 18
-        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify the key files exist
-        ls -la /usr/lib/llvm-18/lib/libclang.so
-        which llvm-config-18
-
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
-        cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
-        mkdir build
-        cd build
-        cmake \
-          -DCMAKE_BUILD_TYPE=RELEASE \
-          -DCMAKE_INSTALL_PREFIX=/usr/local \
-          -DWITH_CUDA=OFF \
-          -DWITH_OPENGL=OFF \
-          -DWITH_OPENCL=OFF \
-          -DWITH_TBB=OFF \
-          -DWITH_IPP=OFF \
-          -DWITH_1394=OFF \
-          -DWITH_V4L=OFF \
-          -DWITH_GTK=OFF \
-          -DBUILD_TESTS=OFF \
-          -DBUILD_PERF_TESTS=OFF \
-          -DBUILD_EXAMPLES=OFF \
-          -DBUILD_opencv_python2=OFF \
-          -DBUILD_opencv_python3=OFF \
-          -DBUILD_opencv_java=OFF \
-          -DOPENCV_GENERATE_PKGCONFIG=ON \
-          ..
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-        # Set OpenCV environment variables
-        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
-    - name: Remove conflicting clippy binaries (if they exist)
-      run: |
-        rm -f ~/.cargo/bin/cargo-clippy
-        rm -f ~/.cargo/bin/clippy-driver
-
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: 1.89
-        components: rustfmt, clippy
-
-    - name: Cache cargo registry
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/registry
-        key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Cache cargo index
-      uses: actions/cache@v4
-      with:
-        path: ~/.cargo/git
-        key: ${{ runner.os }}-cargo-index-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Cache cargo target
-      uses: actions/cache@v4
-      with:
-        path: target
-        key: ${{ runner.os }}-cargo-build-target-${{ hashFiles('**/Cargo.lock') }}
-
-    - name: Check formatting
-      run: cargo fmt --all -- --check
-
-    - name: Run clippy
-      run: cargo clippy --all-targets --no-default-features --features python-bindings,simd,opencv -- -D warnings
-
-    - name: Run tests (no Python bindings)
-      run: cargo test --no-default-features --features simd,opencv
-
-    - name: Compile tests (Linux compatible features)
-      run: cargo test --no-default-features --features python-bindings,simd,opencv --no-run
-
-  python-tests:
-    name: Python Tests
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.11", "3.12"]
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install OpenCV and LLVM dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
-        # Set environment variables for LLVM 18
-        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify the key files exist
-        ls -la /usr/lib/llvm-18/lib/libclang.so
-        which llvm-config-18
-
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
-        cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
-        mkdir build
-        cd build
-        cmake \
-          -DCMAKE_BUILD_TYPE=RELEASE \
-          -DCMAKE_INSTALL_PREFIX=/usr/local \
-          -DWITH_CUDA=OFF \
-          -DWITH_OPENGL=OFF \
-          -DWITH_OPENCL=OFF \
-          -DWITH_TBB=OFF \
-          -DWITH_IPP=OFF \
-          -DWITH_1394=OFF \
-          -DWITH_V4L=OFF \
-          -DWITH_GTK=OFF \
-          -DBUILD_TESTS=OFF \
-          -DBUILD_PERF_TESTS=OFF \
-          -DBUILD_EXAMPLES=OFF \
-          -DBUILD_opencv_python2=OFF \
-          -DBUILD_opencv_python3=OFF \
-          -DBUILD_opencv_java=OFF \
-          -DOPENCV_GENERATE_PKGCONFIG=ON \
-          ..
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-        # Set OpenCV environment variables
-        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-
-    - name: Remove conflicting clippy binaries (if they exist)
-      run: |
-        rm -f ~/.cargo/bin/cargo-clippy
-        rm -f ~/.cargo/bin/clippy-driver
-
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: 1.89
-        components: rustfmt, clippy
-
-    - name: Install maturin (Linux/macOS)
-      run: pip install maturin[patchelf]
-
-    - name: Build Python package (Linux)
-      if: runner.os == 'Linux'
-      run: |
-        mkdir -p dist
-        maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
-
-    - name: Build Python package (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        mkdir -p dist
-        maturin build --release --out dist --no-default-features --features python-bindings,simd,metal
-
-    - name: Install built package (Linux/macOS)
-      run: pip install dist/*.whl
-
-    - name: Install test dependencies
-      run: pip install pytest pytest-benchmark numpy pillow opencv-python
-
-    - name: Run Python tests
-      run: pytest tests/ -v
-
-  pre-commit:
-    name: Pre-commit hooks
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install OpenCV and LLVM dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
-        # Set environment variables for LLVM 18
-        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify the key files exist
-        ls -la /usr/lib/llvm-18/lib/libclang.so
-        which llvm-config-18
-
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
-        cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
-        mkdir build
-        cd build
-        cmake \
-          -DCMAKE_BUILD_TYPE=RELEASE \
-          -DCMAKE_INSTALL_PREFIX=/usr/local \
-          -DWITH_CUDA=OFF \
-          -DWITH_OPENGL=OFF \
-          -DWITH_OPENCL=OFF \
-          -DWITH_TBB=OFF \
-          -DWITH_IPP=OFF \
-          -DWITH_1394=OFF \
-          -DWITH_V4L=OFF \
-          -DWITH_GTK=OFF \
-          -DBUILD_TESTS=OFF \
-          -DBUILD_PERF_TESTS=OFF \
-          -DBUILD_EXAMPLES=OFF \
-          -DBUILD_opencv_python2=OFF \
-          -DBUILD_opencv_python3=OFF \
-          -DBUILD_opencv_java=OFF \
-          -DOPENCV_GENERATE_PKGCONFIG=ON \
-          ..
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
-
-        # Set OpenCV environment variables
-        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
-
-    - name: Remove conflicting clippy binaries (if they exist)
-      run: |
-        rm -f ~/.cargo/bin/cargo-clippy
-        rm -f ~/.cargo/bin/clippy-driver
-
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: 1.89
-        components: rustfmt, clippy
-
-    - name: Install cargo-audit
-      run: cargo install cargo-audit
-
-    - name: Install pre-commit
-      run: pip install pre-commit
-
-    - name: Run pre-commit
-      run: pre-commit run --all-files
-
-  cross-compile-opencv-windows:
-    name: Cross-compile OpenCV for Windows
-    runs-on: ubuntu-latest
-    outputs:
-      artifact-name: opencv-windows-x64
-
-    steps:
-    - uses: actions/checkout@v4
-
-    - name: Install MinGW-w64 cross-compilation toolchain
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y g++-mingw-w64-x86-64 gcc-mingw-w64-x86-64 cmake wget
-
-    - name: Cross-compile OpenCV 4.12 for Windows
-      run: |
-        echo "Cross-compiling OpenCV 4.12 for Windows x64..."
-        cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
-        mkdir build-windows
-        cd build-windows
-        
-        # Create MinGW-w64 toolchain file
-        cat > toolchain.cmake << 'EOF'
-        set(CMAKE_SYSTEM_NAME Windows)
-        set(CMAKE_SYSTEM_PROCESSOR x86_64)
-        set(CMAKE_C_COMPILER x86_64-w64-mingw32-gcc)
-        set(CMAKE_CXX_COMPILER x86_64-w64-mingw32-g++)
-        set(CMAKE_RC_COMPILER x86_64-w64-mingw32-windres)
-        set(CMAKE_FIND_ROOT_PATH /usr/x86_64-w64-mingw32)
-        set(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
-        set(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
-        set(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
-        EOF
-        
-        cmake \
-          -DCMAKE_TOOLCHAIN_FILE=toolchain.cmake \
-          -DCMAKE_BUILD_TYPE=RELEASE \
-          -DCMAKE_INSTALL_PREFIX=/tmp/opencv-windows \
-          -DWITH_CUDA=OFF \
-          -DWITH_OPENGL=OFF \
-          -DWITH_OPENCL=OFF \
-          -DWITH_TBB=OFF \
-          -DWITH_IPP=OFF \
-          -DWITH_1394=OFF \
-          -DWITH_V4L=OFF \
-          -DWITH_GTK=OFF \
-          -DBUILD_TESTS=OFF \
-          -DBUILD_PERF_TESTS=OFF \
-          -DBUILD_EXAMPLES=OFF \
-          -DBUILD_opencv_python2=OFF \
-          -DBUILD_opencv_python3=OFF \
-          -DBUILD_opencv_java=OFF \
-          ..
-        
-        make -j$(nproc)
-        make install
-
-    - name: Package OpenCV for Windows
-      run: |
-        cd /tmp
-        tar -czf opencv-windows-x64.tar.gz -C opencv-windows .
-
-    - name: Upload cross-compiled OpenCV
-      uses: actions/upload-artifact@v4
-      with:
-        name: opencv-windows-x64
-        path: /tmp/opencv-windows-x64.tar.gz
-        retention-days: 1
-
-  build-wheels:
-    name: Build wheels
+  build-test:
+    name: ${{ matrix.label }}
     runs-on: ${{ matrix.os }}
-    # Note: Windows now downloads pre-built OpenCV directly, so cross-compile job dependency removed
     strategy:
+      fail-fast: false
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - label: linux-py311
+            os: ubuntu-latest
+            python-version: "3.11"
+            rust-features: "python-bindings,simd,opencv"
+            python-features: "python-bindings,simd,opencv"
+            precommit: true
+          - label: linux-py312
+            os: ubuntu-latest
+            python-version: "3.12"
+            rust-features: "python-bindings,simd,opencv"
+            python-features: "python-bindings,simd,opencv"
+            precommit: false
+          - label: macos
+            os: macos-latest
+            python-version: "3.11"
+            rust-features: "python-bindings,simd,opencv,metal"
+            python-features: "python-bindings,simd,opencv,metal"
+            precommit: false
+          - label: windows
+            os: windows-latest
+            python-version: "3.11"
+            rust-features: "python-bindings,simd,opencv"
+            python-features: "python-bindings,simd,opencv"
+            precommit: false
 
     steps:
-    - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    - name: Install OpenCV and LLVM dependencies (Ubuntu)
-      if: runner.os == 'Linux'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y pkg-config clang libclang-dev llvm-dev wget cmake build-essential
-        # Install LLVM 18 which has the proper libclang.so symlink
-        sudo apt-get install -y llvm-18 llvm-18-dev llvm-18-tools libclang1-18 libclang-cpp18
-        # Set environment variables for LLVM 18
-        echo "LIBCLANG_PATH=/usr/lib/llvm-18/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/usr/bin/llvm-config-18" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/lib/llvm-18/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Verify the key files exist
-        ls -la /usr/lib/llvm-18/lib/libclang.so
-        which llvm-config-18
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
 
-        # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
-        echo "Building OpenCV 4.12 from source..."
-        cd /tmp
-        wget -q https://github.com/opencv/opencv/archive/4.12.0.tar.gz
-        tar -xzf 4.12.0.tar.gz
-        cd opencv-4.12.0
-        mkdir build
-        cd build
-        cmake \
-          -DCMAKE_BUILD_TYPE=RELEASE \
-          -DCMAKE_INSTALL_PREFIX=/usr/local \
-          -DWITH_CUDA=OFF \
-          -DWITH_OPENGL=OFF \
-          -DWITH_OPENCL=OFF \
-          -DWITH_TBB=OFF \
-          -DWITH_IPP=OFF \
-          -DWITH_1394=OFF \
-          -DWITH_V4L=OFF \
-          -DWITH_GTK=OFF \
-          -DBUILD_TESTS=OFF \
-          -DBUILD_PERF_TESTS=OFF \
-          -DBUILD_EXAMPLES=OFF \
-          -DBUILD_opencv_python2=OFF \
-          -DBUILD_opencv_python3=OFF \
-          -DBUILD_opencv_java=OFF \
-          -DOPENCV_GENERATE_PKGCONFIG=ON \
-          ..
-        make -j$(nproc)
-        sudo make install
-        sudo ldconfig
+      - name: Install system dependencies (Linux)
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y pkg-config clang libclang-dev llvm-dev cmake ninja-build libopencv-dev python3-opencv
+          echo "LLVM_CONFIG_PATH=$(command -v llvm-config)" >> "$GITHUB_ENV"
+          echo "LIBCLANG_PATH=$(llvm-config --libdir)" >> "$GITHUB_ENV"
 
-        # Set OpenCV environment variables
-        echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
-        echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+      - name: Install system dependencies (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          brew update
+          brew install opencv llvm ninja
+          LLVM_PREFIX="$(brew --prefix llvm)"
+          OPENCV_PREFIX="$(brew --prefix opencv)"
+          echo "LIBCLANG_PATH=${LLVM_PREFIX}/lib" >> "$GITHUB_ENV"
+          echo "LLVM_CONFIG_PATH=${LLVM_PREFIX}/bin/llvm-config" >> "$GITHUB_ENV"
+          echo "PKG_CONFIG_PATH=${OPENCV_PREFIX}/lib/pkgconfig:$PKG_CONFIG_PATH" >> "$GITHUB_ENV"
+          echo "OPENCV_LINK_PATHS=${OPENCV_PREFIX}/lib" >> "$GITHUB_ENV"
+          echo "OPENCV_INCLUDE_PATHS=${OPENCV_PREFIX}/include/opencv4" >> "$GITHUB_ENV"
 
-    - name: Install OpenCV and LLVM dependencies (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        # Use pre-installed LLVM/Clang on GitHub Actions Windows runner
-        # Set CC and CXX to use Clang explicitly (required for opencv-rust bindings)
-        echo "CC=clang" >> $env:GITHUB_ENV
-        echo "CXX=clang++" >> $env:GITHUB_ENV
-        
-        # Verify Clang version (should be 19.0.0+)
-        clang --version
-        
-        # Download and extract pre-built OpenCV for Windows (MSVC)
-        Write-Host 'Downloading pre-built OpenCV 4.12.0 for Windows (MSVC)...'
-        $opencvRoot = 'C:\opencv'
-        New-Item -ItemType Directory -Force -Path $opencvRoot | Out-Null
-        
-        # Download OpenCV Windows installer
-        $opencvUrl = 'https://github.com/opencv/opencv/releases/download/4.12.0/opencv-4.12.0-windows.exe'
-        $opencvInstaller = "$env:TEMP\opencv-installer.exe"
-        $extractDir = "$env:TEMP\opencv-extract"
-        
-        Invoke-WebRequest -Uri $opencvUrl -OutFile $opencvInstaller -UseBasicParsing
-        
-        # Extract the self-extracting archive
-        Write-Host 'Extracting OpenCV installer...'
-        New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
-        Start-Process -FilePath $opencvInstaller -ArgumentList "-o$extractDir", "-y" -Wait -NoNewWindow
-        
-        # Copy build directory to target location
-        $buildDir = Join-Path $extractDir "opencv\build"
-        if (Test-Path $buildDir) {
-          Copy-Item -Path "$buildDir\*" -Destination $opencvRoot -Recurse -Force
-        } else {
-          # Fallback: copy everything
-          Copy-Item -Path "$extractDir\opencv\*" -Destination $opencvRoot -Recurse -Force
-        }
-        
-        # Clean up
-        Remove-Item -Path $extractDir -Recurse -Force -ErrorAction SilentlyContinue
-        Remove-Item -Path $opencvInstaller -Force -ErrorAction SilentlyContinue
-        
-        # Find OpenCV library path - pre-built uses x64/vcXX/lib structure
-        $opencvLibPath = $null
-        $possibleLibPaths = @(
-          "$opencvRoot\x64\vc16\lib",
-          "$opencvRoot\x64\vc15\lib",
-          "$opencvRoot\x64\vc14\lib"
-        )
-        
-        foreach ($path in $possibleLibPaths) {
-          if (Test-Path $path) {
-            $calib3dLib = Join-Path $path "opencv_calib3d.lib"
-            if (Test-Path $calib3dLib) {
-              $opencvLibPath = $path
-              Write-Host "Found OpenCV library path: $opencvLibPath"
-              break
-            }
-          }
-        }
-        
-        if (-not $opencvLibPath) {
-          # Search recursively
-          $foundLibs = Get-ChildItem -Path $opencvRoot -Recurse -Filter "opencv_calib3d.lib" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($foundLibs) {
-            $opencvLibPath = $foundLibs.Directory.FullName
-            Write-Host "Found OpenCV library path by searching: $opencvLibPath"
-          } else {
-            throw "Could not locate opencv_calib3d.lib"
-          }
-        }
-        
-        # Find include and bin paths
-        $opencvIncludePath = "$opencvRoot\include"
-        if (-not (Test-Path "$opencvIncludePath\opencv2\opencv.hpp")) {
-          $foundIncludes = Get-ChildItem -Path $opencvRoot -Recurse -Filter "opencv2\opencv.hpp" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($foundIncludes) {
-            $opencvIncludePath = $foundIncludes.Directory.Parent.FullName
-          }
-        }
-        
-        $opencvBinPath = $opencvLibPath -replace '\\lib$', '\bin'
-        if (Test-Path $opencvBinPath) {
-          echo "$opencvBinPath" >> $env:GITHUB_PATH
-        }
-        
-        # Set environment variables - use absolute paths
-        $opencvLibPathAbs = (Resolve-Path $opencvLibPath).Path
-        $opencvIncludePathAbs = (Resolve-Path $opencvIncludePath).Path
-        
-        echo "OPENCV_DIR=$opencvRoot" >> $env:GITHUB_ENV
-        
-        # Set LIB environment variable - CRITICAL for linker to find .lib files
-        if ($env:LIB) {
-          echo "LIB=$env:LIB;$opencvLibPathAbs" >> $env:GITHUB_ENV
-        } else {
-          echo "LIB=$opencvLibPathAbs" >> $env:GITHUB_ENV
-        }
-        Write-Host "Set LIB to include: $opencvLibPathAbs"
-        
-        # Set opencv-rust environment variables
-        echo "OPENCV_LINK_PATHS=$opencvLibPathAbs" >> $env:GITHUB_ENV
-        echo "OPENCV_INCLUDE_PATHS=$opencvIncludePathAbs" >> $env:GITHUB_ENV
-        
-        # Verify
-        $calib3dLib = "$opencvLibPathAbs\opencv_calib3d.lib"
-        if (Test-Path $calib3dLib) {
-          Write-Host "✓ Verified opencv_calib3d.lib exists: $calib3dLib"
-        } else {
-          throw "opencv_calib3d.lib not found at: $calib3dLib"
-        }
+      - name: Install system dependencies (Windows)
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          choco install -y ninja llvm opencv
+          $llvmBin = 'C:\\Program Files\\LLVM\\bin'
+          if (-not (Test-Path $llvmBin)) { throw "LLVM not found at $llvmBin" }
+          Add-Content -Path $env:GITHUB_ENV -Value "LIBCLANG_PATH=$llvmBin"
+          Add-Content -Path $env:GITHUB_ENV -Value "LLVM_CONFIG_PATH=$llvmBin\\llvm-config.exe"
+          $opencvDir = 'C:\\tools\\opencv\\build'
+          if (-not (Test-Path $opencvDir)) { throw "OpenCV not found at $opencvDir" }
+          $libDir = Join-Path $opencvDir 'x64\\vc16\\lib'
+          $includeDir = Join-Path $opencvDir 'include'
+          $worldLib = Get-ChildItem $libDir -Filter 'opencv_world*.lib' | Select-Object -First 1
+          if (-not $worldLib) { throw "Unable to locate opencv_world*.lib under $libDir" }
+          $libName = [System.IO.Path]::GetFileNameWithoutExtension($worldLib.Name)
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENCV_DIR=$opencvDir"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENCV_LINK_PATHS=$libDir"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENCV_INCLUDE_PATHS=$includeDir"
+          Add-Content -Path $env:GITHUB_ENV -Value "OPENCV_LINK_LIBS=$libName"
 
-    - name: Set up Python
-      uses: actions/setup-python@v4
-      with:
-        python-version: 3.11
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: 1.89
+          components: rustfmt, clippy
 
-    - name: Install Rust toolchain
-      uses: dtolnay/rust-toolchain@master
-      with:
-        toolchain: 1.89
+      - name: Cache cargo build data
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-    - name: Install maturin (Linux/macOS)
-      if: runner.os != 'Windows'
-      run: pip install maturin[patchelf]
+      - name: Install Python tooling
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          if [ "${RUNNER_OS}" = "Linux" ]; then
+            pip install "maturin[patchelf]" pytest pytest-benchmark numpy pillow opencv-python pre-commit
+          else
+            pip install maturin pytest pytest-benchmark numpy pillow opencv-python pre-commit
+          fi
 
-    - name: Install maturin (Windows)
-      if: runner.os == 'Windows'
-      run: pip install maturin
+      - name: Check formatting
+        run: cargo fmt --all -- --check
 
-    - name: Install OpenCV (macOS)
-      if: runner.os == 'macOS'
-      run: |
-        # Install OpenCV and LLVM via Homebrew
-        brew install opencv llvm
-        # Set up LLVM environment for opencv-rust bindings (keg-only installation)
-        echo "LIBCLANG_PATH=/opt/homebrew/opt/llvm/lib" >> $GITHUB_ENV
-        echo "LLVM_CONFIG_PATH=/opt/homebrew/opt/llvm/bin/llvm-config" >> $GITHUB_ENV
-        echo "DYLD_LIBRARY_PATH=/opt/homebrew/opt/llvm/lib:$DYLD_LIBRARY_PATH" >> $GITHUB_ENV
-        # Set up OpenCV environment
-        echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
-        echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
-        echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
+      - name: Run clippy
+        run: cargo clippy --all-targets --no-default-features --features "${{ matrix.rust-features }}" -- -D warnings
 
-    - name: Build wheels (Linux)
-      if: runner.os == 'Linux'
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
+      - name: Run cargo tests
+        run: cargo test --no-default-features --features "${{ matrix.rust-features }}"
 
-    - name: Build wheels (macOS)
-      if: runner.os == 'macOS'
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv,metal
+      - name: Build Python extension
+        shell: bash
+        run: maturin develop --release --no-default-features --features "${{ matrix.python-features }}"
 
-    - name: Verify OpenCV setup (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: |
-        Write-Host "Verifying OpenCV setup before build..."
-        Write-Host "LIB environment variable: $env:LIB"
-        Write-Host "OPENCV_DIR: $env:OPENCV_DIR"
-        Write-Host "OPENCV_LINK_PATHS: $env:OPENCV_LINK_PATHS"
-        
-        # Verify opencv_calib3d.lib exists in LIB path
-        if ($env:LIB) {
-          $libPaths = $env:LIB -split ';'
-          foreach ($libPath in $libPaths) {
-            if ($libPath) {
-              $calib3dLib = Join-Path $libPath "opencv_calib3d.lib"
-              Write-Host "Checking: $calib3dLib"
-              if (Test-Path $calib3dLib) {
-                Write-Host "✓ Found opencv_calib3d.lib at: $calib3dLib"
-              } else {
-                Write-Host "✗ opencv_calib3d.lib not found at: $libPath"
-              }
-            }
-          }
-        }
+      - name: Run pytest
+        shell: bash
+        run: pytest tests -v
 
-    - name: Build wheels (Windows)
-      if: runner.os == 'Windows'
-      shell: pwsh
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
+      - name: Run pre-commit checks
+        if: matrix.precommit == true
+        shell: bash
+        run: pre-commit run --all-files
 
-    - name: Upload wheels
-      uses: actions/upload-artifact@v4
-      with:
-        name: wheels-${{ matrix.os }}
-        path: dist/
+  logs-download:
+    name: Download GH action logs
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4.2.1
+      - name: Download 24hrs Old Logs
+        uses: pawanbahuguna/action-logs@v2.0.0
+        env:
+          GH_TOKEN: ${{ secrets.GH_TOKEN }}
+          GH_REPO: ${{ github.repository }}
