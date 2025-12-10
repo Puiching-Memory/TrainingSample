@@ -411,7 +411,9 @@ jobs:
           (Join-Path $work "x64/vc16/lib/cmake/opencv4"),
           (Join-Path $work "x64/vc16/staticlib/cmake/opencv4"),
           (Join-Path $work "x64/mingw/lib/cmake/opencv4"),
-          (Join-Path $work "x64/mingw/staticlib/cmake/opencv4")
+          (Join-Path $work "x64/mingw/staticlib/cmake/opencv4"),
+          (Join-Path $work "x64/mingw/staticlib"),
+          $work
         )
         foreach ($c in $cmakeCandidates) {
           if (Test-Path $c) { $cmakeConfig = $c; break }
