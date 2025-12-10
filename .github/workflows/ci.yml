@@ -398,8 +398,8 @@ jobs:
           if (Test-Path $c) { $libPath = $c; break }
         }
         if (-not $libPath) { throw "OpenCV lib path not found" }
-        # Prefer the opencv4 include root so version.hpp is discoverable
-        echo "OPENCV_INCLUDE_PATHS=$work/include/opencv4" >> $env:GITHUB_ENV
+        # Provide both include roots (opencv4 layout may be absent in MinGW installs)
+        echo "OPENCV_INCLUDE_PATHS=$work/include;$work/include/opencv4" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
