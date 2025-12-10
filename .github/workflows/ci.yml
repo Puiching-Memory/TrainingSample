@@ -389,7 +389,9 @@ jobs:
           (Join-Path $work "x64/vc17/lib"),
           (Join-Path $work "x64/vc17/staticlib"),
           (Join-Path $work "x64/vc16/lib"),
-          (Join-Path $work "x64/vc16/staticlib")
+          (Join-Path $work "x64/vc16/staticlib"),
+          (Join-Path $work "x64/mingw/lib"),
+          (Join-Path $work "x64/mingw/staticlib")
         )
         foreach ($c in $libCandidates) {
           if (Test-Path $c) { $libPath = $c; break }
@@ -406,7 +408,9 @@ jobs:
           (Join-Path $work "x64/vc17/lib/cmake/opencv4"),
           (Join-Path $work "x64/vc17/staticlib/cmake/opencv4"),
           (Join-Path $work "x64/vc16/lib/cmake/opencv4"),
-          (Join-Path $work "x64/vc16/staticlib/cmake/opencv4")
+          (Join-Path $work "x64/vc16/staticlib/cmake/opencv4"),
+          (Join-Path $work "x64/mingw/lib/cmake/opencv4"),
+          (Join-Path $work "x64/mingw/staticlib/cmake/opencv4")
         )
         foreach ($c in $cmakeCandidates) {
           if (Test-Path $c) { $cmakeConfig = $c; break }
@@ -414,7 +418,6 @@ jobs:
         if (-not $cmakeConfig) { throw "OpenCV CMake config path not found" }
         echo "OpenCV_DIR=$cmakeConfig" >> $env:GITHUB_ENV
         echo "CMAKE_PREFIX_PATH=$cmakeConfig" >> $env:GITHUB_ENV
-
 
 
     - name: Set up Python
