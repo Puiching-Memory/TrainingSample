@@ -385,21 +385,35 @@ jobs:
         cmake --build $build --config Release --target install
 
         # Export OpenCV paths for the Rust build script
-        $libPath = Join-Path $work "x64/vc17/lib"
-        if (-not (Test-Path $libPath)) {
-          $libPath = Join-Path $work "x64/vc16/lib"
+        $libCandidates = @(
+          (Join-Path $work "x64/vc17/lib"),
+          (Join-Path $work "x64/vc17/staticlib"),
+          (Join-Path $work "x64/vc16/lib"),
+          (Join-Path $work "x64/vc16/staticlib")
+        )
+        foreach ($c in $libCandidates) {
+          if (Test-Path $c) { $libPath = $c; break }
         }
-        echo "OPENCV_INCLUDE_PATHS=$work/include;$work/include/opencv4" >> $env:GITHUB_ENV
+        if (-not $libPath) { throw "OpenCV lib path not found" }
+        # Prefer the opencv4 include root so version.hpp is discoverable
+        echo "OPENCV_INCLUDE_PATHS=$work/include/opencv4" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
         echo "OPENCV_DISABLE_PROBES=pkg_config" >> $env:GITHUB_ENV
         # Point CMake-based probes to the installed config package
-        $cmakeConfig = Join-Path $work "x64/vc17/lib/cmake/opencv4"
-        if (-not (Test-Path $cmakeConfig)) {
-          $cmakeConfig = Join-Path $work "x64/vc16/lib/cmake/opencv4"
+        $cmakeCandidates = @(
+          (Join-Path $work "x64/vc17/lib/cmake/opencv4"),
+          (Join-Path $work "x64/vc17/staticlib/cmake/opencv4"),
+          (Join-Path $work "x64/vc16/lib/cmake/opencv4"),
+          (Join-Path $work "x64/vc16/staticlib/cmake/opencv4")
+        )
+        foreach ($c in $cmakeCandidates) {
+          if (Test-Path $c) { $cmakeConfig = $c; break }
         }
+        if (-not $cmakeConfig) { throw "OpenCV CMake config path not found" }
         echo "OpenCV_DIR=$cmakeConfig" >> $env:GITHUB_ENV
+        echo "CMAKE_PREFIX_PATH=$cmakeConfig" >> $env:GITHUB_ENV
 
 
 
