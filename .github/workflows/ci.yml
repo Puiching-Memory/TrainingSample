@@ -393,9 +393,11 @@ jobs:
         $opencv4 = Join-Path $includeRoot "opencv4"
         if (Test-Path $opencv4) { $includePaths += $opencv4 }
 
-        $libCandidate = Get-ChildItem -Path $work -Recurse -File -Include "opencv_world412*.lib","opencv_world412*.a" -ErrorAction SilentlyContinue | Select-Object -First 1
+        # Find the installed OpenCV world library (static or import) and derive its name for linking
+        $libCandidate = Get-ChildItem -Path $work -Recurse -File -Include "*opencv_world*.lib","*opencv_world*.a" -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $libCandidate) { throw "OpenCV lib path not found" }
         $libPath = Split-Path $libCandidate.FullName
+        $libName = [IO.Path]::GetFileNameWithoutExtension($libCandidate.Name) -replace '^lib',''
 
         $cmakeConfig = Get-ChildItem -Path $work -Recurse -File -Filter "OpenCVConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
         if (-not $cmakeConfig) { throw "OpenCV CMake config path not found" }
@@ -403,7 +405,7 @@ jobs:
 
         echo "OPENCV_INCLUDE_PATHS=$($includePaths -join ';')" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
-        echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
+        echo "OPENCV_LINK_LIBS=static=$libName" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
         echo "OPENCV_DISABLE_PROBES=pkg_config" >> $env:GITHUB_ENV
         echo "OpenCV_DIR=$cmakeDir" >> $env:GITHUB_ENV
