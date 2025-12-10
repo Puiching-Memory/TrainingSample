@@ -1,4 +1,13 @@
-CARGO_TERM_COLOR: always
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  CARGO_TERM_COLOR: always
 
 jobs:
   rust-tests:
@@ -21,6 +30,7 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
+
         # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
         echo "Building OpenCV 4.12 from source..."
         cd /tmp
@@ -51,9 +61,11 @@ jobs:
         make -j$(nproc)
         sudo make install
         sudo ldconfig
+
         # Set OpenCV environment variables
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
     - name: Install Rust toolchain
       uses: dtolnay/rust-toolchain@master
       with:
@@ -113,6 +125,7 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
+
         # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
         echo "Building OpenCV 4.12 from source..."
         cd /tmp
@@ -143,9 +156,11 @@ jobs:
         make -j$(nproc)
         sudo make install
         sudo ldconfig
+
         # Set OpenCV environment variables
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
@@ -158,6 +173,7 @@ jobs:
         components: rustfmt, clippy
 
     - name: Install maturin (Linux/macOS)
+      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
 
     - name: Build Python package (Linux)
@@ -165,11 +181,13 @@ jobs:
       run: |
         mkdir -p dist
         maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
+
     - name: Build Python package (macOS)
       if: runner.os == 'macOS'
       run: |
         mkdir -p dist
         maturin build --release --out dist --no-default-features --features python-bindings,simd,metal
+
     - name: Install built package (Linux/macOS)
       run: pip install dist/*.whl
 
@@ -199,6 +217,7 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
+
         # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
         echo "Building OpenCV 4.12 from source..."
         cd /tmp
@@ -229,9 +248,11 @@ jobs:
         make -j$(nproc)
         sudo make install
         sudo ldconfig
+
         # Set OpenCV environment variables
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -276,6 +297,7 @@ jobs:
         # Verify the key files exist
         ls -la /usr/lib/llvm-18/lib/libclang.so
         which llvm-config-18
+
         # Build OpenCV 4.12 from source since Ubuntu 24.04 only has 4.6
         echo "Building OpenCV 4.12 from source..."
         cd /tmp
@@ -306,6 +328,7 @@ jobs:
         make -j$(nproc)
         sudo make install
         sudo ldconfig
+
         # Set OpenCV environment variables
         echo "PKG_CONFIG_PATH=/usr/local/lib/pkgconfig:$PKG_CONFIG_PATH" >> $GITHUB_ENV
         echo "LD_LIBRARY_PATH=/usr/local/lib:$LD_LIBRARY_PATH" >> $GITHUB_ENV
@@ -314,32 +337,58 @@ jobs:
       if: runner.os == 'Windows'
       shell: pwsh
       run: |
-        choco install --no-progress -y llvm --version=18.1.8
-        choco install --no-progress -y 7zip
+        $ErrorActionPreference = "Stop"
+        choco install -y llvm --version=18.1.8 ninja
 
-        $opencvVersion = "4.12.0"
-        $archive = "opencv-$opencvVersion-windows.exe"
-        $downloadUrl = "https://github.com/opencv/opencv/releases/download/$opencvVersion/$archive"
+        # Point bindgen at LLVM 18
+        $llvmBin = "C:\\Program Files\\LLVM\\bin"
+        echo "LIBCLANG_PATH=$llvmBin" >> $env:GITHUB_ENV
+        echo "LLVM_CONFIG_PATH=$llvmBin\\llvm-config.exe" >> $env:GITHUB_ENV
 
-        Invoke-WebRequest -Uri $downloadUrl -OutFile $archive
-        $opencvRoot = "C:\opencv"
-        7z x $archive -o"$opencvRoot" -y
+        # Build OpenCV 4.12 statically with a minimal feature set
+        $work = "$env:RUNNER_TEMP\\opencv"
+        $source = "$env:RUNNER_TEMP\\opencv-4.12.0"
+        $build = "$source\\build"
+        $zip = "$env:RUNNER_TEMP\\opencv-4.12.0.zip"
+        Invoke-WebRequest -Uri https://github.com/opencv/opencv/archive/4.12.0.zip -OutFile $zip
+        Expand-Archive -Path $zip -DestinationPath $env:RUNNER_TEMP
+        cmake -S $source -B $build -G "Ninja" `
+          -DCMAKE_BUILD_TYPE=Release `
+          -DCMAKE_INSTALL_PREFIX=$work `
+          -DBUILD_SHARED_LIBS=OFF `
+          -DBUILD_opencv_world=ON `
+          -DWITH_CUDA=OFF `
+          -DWITH_OPENGL=OFF `
+          -DWITH_OPENCL=OFF `
+          -DWITH_TBB=OFF `
+          -DWITH_IPP=OFF `
+          -DWITH_1394=OFF `
+          -DWITH_GSTREAMER=OFF `
+          -DBUILD_TESTS=OFF `
+          -DBUILD_PERF_TESTS=OFF `
+          -DBUILD_EXAMPLES=OFF `
+          -DBUILD_opencv_python2=OFF `
+          -DBUILD_opencv_python3=OFF `
+          -DBUILD_JPEG=ON -DWITH_JPEG=ON `
+          -DBUILD_PNG=ON -DWITH_PNG=ON `
+          -DBUILD_TIFF=ON -DWITH_TIFF=ON `
+          -DBUILD_WEBP=ON -DWITH_WEBP=ON `
+          -DBUILD_ZLIB=ON -DWITH_ZLIB=ON `
+          -DOPENCV_GENERATE_PKGCONFIG=ON
+        cmake --build $build --config Release --target install
 
-        $buildDir = Join-Path $opencvRoot "opencv\build"
-        if (-not (Test-Path $buildDir)) { throw "OpenCV build directory not found at $buildDir" }
+        # Export OpenCV paths for the Rust build script
+        $libPath = Join-Path $work "x64/vc17/lib"
+        if (-not (Test-Path $libPath)) {
+          $libPath = Join-Path $work "x64/vc16/lib"
+        }
+        echo "OPENCV_INCLUDE_PATHS=$work/include;$work/include/opencv4" >> $env:GITHUB_ENV
+        echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
+        echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
+        echo "OPENCV_DISABLE_PROBES=pkg_config,cmake,vcpkg,vcpkg_cmake" >> $env:GITHUB_ENV
 
-        $libDir = Join-Path $buildDir "x64\vc16\lib"
-        $binDir = Join-Path $buildDir "x64\vc16\bin"
-        $includeDir = Join-Path $buildDir "include"
-        $worldLib = Get-ChildItem -Path $libDir -Filter "opencv_world*.lib" | Select-Object -First 1 -ExpandProperty BaseName
-        if (-not $worldLib) { throw "opencv_world import library not found in $libDir" }
 
-        "LIBCLANG_PATH=C:\Program Files\LLVM\bin" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OPENCV_LINK_PATHS=$libDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OPENCV_INCLUDE_PATHS=$includeDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OPENCV_LINK_LIBS=$worldLib" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "OpenCV_DIR=$buildDir" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-        "PATH=$binDir;C:\Program Files\LLVM\bin;$env:PATH" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
@@ -350,12 +399,12 @@ jobs:
       with:
         toolchain: 1.89
 
-    - name: Install maturin (Linux)
-      if: runner.os == 'Linux'
+    - name: Install maturin (Linux/macOS)
+      if: runner.os != 'Windows'
       run: pip install maturin[patchelf]
 
-    - name: Install maturin (macOS/Windows)
-      if: runner.os != 'Linux'
+    - name: Install maturin (Windows)
+      if: runner.os == 'Windows'
       run: pip install maturin
 
     - name: Install OpenCV (macOS)
@@ -371,6 +420,7 @@ jobs:
         echo "OPENCV_LINK_LIBS=opencv_calib3d,opencv_core,opencv_dnn,opencv_features2d,opencv_flann,opencv_highgui,opencv_imgcodecs,opencv_imgproc,opencv_ml,opencv_objdetect,opencv_photo,opencv_stitching,opencv_video,opencv_videoio" >> $GITHUB_ENV
         echo "OPENCV_LINK_PATHS=/opt/homebrew/lib" >> $GITHUB_ENV
         echo "OPENCV_INCLUDE_PATHS=/opt/homebrew/include/opencv4" >> $GITHUB_ENV
+
     - name: Build wheels (Linux)
       if: runner.os == 'Linux'
       run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
@@ -381,7 +431,11 @@ jobs:
 
     - name: Build wheels (Windows)
       if: runner.os == 'Windows'
-      run: maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = "Stop"
+        mkdir dist
+        maturin build --release --out dist --no-default-features --features python-bindings,simd,opencv
 
 
     - name: Upload wheels
