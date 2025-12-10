@@ -393,7 +393,7 @@ jobs:
         echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
-        echo "OPENCV_DISABLE_PROBES=pkg_config,cmake,vcpkg,vcpkg_cmake" >> $env:GITHUB_ENV
+        echo "OPENCV_DISABLE_PROBES=pkg_config" >> $env:GITHUB_ENV
 
 
 
