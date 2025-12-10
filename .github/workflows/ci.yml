@@ -338,7 +338,8 @@ jobs:
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
-        choco install -y llvm --version=18.1.8 --allow-downgrade --force
+        # Clang 18 triggers STL1000 on the hosted MSVC toolset; move to Clang 19+
+        choco install -y llvm --force --allow-downgrade
 
         # Point bindgen at LLVM 18
         $llvmBin = "C:\\Program Files\\LLVM\\bin"
