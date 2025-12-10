@@ -385,42 +385,29 @@ jobs:
           -DOPENCV_GENERATE_PKGCONFIG=ON
         cmake --build $build --config Release --target install
 
-        # Export OpenCV paths for the Rust build script
-        $libCandidates = @(
-          (Join-Path $work "x64/vc17/lib"),
-          (Join-Path $work "x64/vc17/staticlib"),
-          (Join-Path $work "x64/vc16/lib"),
-          (Join-Path $work "x64/vc16/staticlib"),
-          (Join-Path $work "x64/mingw/lib"),
-          (Join-Path $work "x64/mingw/staticlib")
-        )
-        foreach ($c in $libCandidates) {
-          if (Test-Path $c) { $libPath = $c; break }
-        }
-        if (-not $libPath) { throw "OpenCV lib path not found" }
-        # Provide both include roots (opencv4 layout may be absent in MinGW installs)
-        echo "OPENCV_INCLUDE_PATHS=$work/include;$work/include/opencv4" >> $env:GITHUB_ENV
+        # Export OpenCV paths for the Rust build script based on what was installed
+        $includeCandidate = Get-ChildItem -Path $work -Recurse -Directory -Filter "opencv2" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $includeCandidate) { throw "OpenCV include path not found" }
+        $includeRoot = Split-Path $includeCandidate.FullName
+        $includePaths = @($includeRoot)
+        $opencv4 = Join-Path $includeRoot "opencv4"
+        if (Test-Path $opencv4) { $includePaths += $opencv4 }
+
+        $libCandidate = Get-ChildItem -Path $work -Recurse -File -Include "opencv_world412*.lib","opencv_world412*.a" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $libCandidate) { throw "OpenCV lib path not found" }
+        $libPath = Split-Path $libCandidate.FullName
+
+        $cmakeConfig = Get-ChildItem -Path $work -Recurse -File -Filter "OpenCVConfig.cmake" -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $cmakeConfig) { throw "OpenCV CMake config path not found" }
+        $cmakeDir = Split-Path $cmakeConfig.FullName
+
+        echo "OPENCV_INCLUDE_PATHS=$($includePaths -join ';')" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
         echo "OPENCV_DISABLE_PROBES=pkg_config" >> $env:GITHUB_ENV
-        # Point CMake-based probes to the installed config package
-        $cmakeCandidates = @(
-          (Join-Path $work "x64/vc17/lib/cmake/opencv4"),
-          (Join-Path $work "x64/vc17/staticlib/cmake/opencv4"),
-          (Join-Path $work "x64/vc16/lib/cmake/opencv4"),
-          (Join-Path $work "x64/vc16/staticlib/cmake/opencv4"),
-          (Join-Path $work "x64/mingw/lib/cmake/opencv4"),
-          (Join-Path $work "x64/mingw/staticlib/cmake/opencv4"),
-          (Join-Path $work "x64/mingw/staticlib"),
-          $work
-        )
-        foreach ($c in $cmakeCandidates) {
-          if (Test-Path $c) { $cmakeConfig = $c; break }
-        }
-        if (-not $cmakeConfig) { throw "OpenCV CMake config path not found" }
-        echo "OpenCV_DIR=$cmakeConfig" >> $env:GITHUB_ENV
-        echo "CMAKE_PREFIX_PATH=$cmakeConfig" >> $env:GITHUB_ENV
+        echo "OpenCV_DIR=$cmakeDir" >> $env:GITHUB_ENV
+        echo "CMAKE_PREFIX_PATH=$cmakeDir" >> $env:GITHUB_ENV
 
 
     - name: Set up Python
