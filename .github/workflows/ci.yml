@@ -338,7 +338,7 @@ jobs:
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
-        choco install -y llvm --version=18.1.8
+        choco install -y llvm --version=18.1.8 --allow-downgrade --force
 
         # Point bindgen at LLVM 18
         $llvmBin = "C:\\Program Files\\LLVM\\bin"
@@ -355,6 +355,7 @@ jobs:
         Expand-Archive -Path $zip -DestinationPath $env:RUNNER_TEMP
         cmake -S $source -B $build -G "Visual Studio 17 2022" -A x64 `
           -DCMAKE_INSTALL_PREFIX="$work" `
+          -DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreadedDLL" `
           -DBUILD_SHARED_LIBS=OFF `
           -DBUILD_opencv_world=ON `
           -DWITH_CUDA=OFF `
@@ -397,7 +398,8 @@ jobs:
 
         echo "OPENCV_INCLUDE_PATHS=$($includePaths -join ';')" >> $env:GITHUB_ENV
         echo "OPENCV_LINK_PATHS=$libPath" >> $env:GITHUB_ENV
-        echo "OPENCV_LINK_LIBS=static=$libName" >> $env:GITHUB_ENV
+        $opencvDeps = @('static=' + $libName,'ittnotify','libjpeg-turbo','libpng','libtiff','libwebp','IlmImf','libopenjp2','zlib')
+        echo "OPENCV_LINK_LIBS=$($opencvDeps -join ',')" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
         echo "OPENCV_DISABLE_PROBES=pkg_config" >> $env:GITHUB_ENV
         echo "OpenCV_DIR=$cmakeDir" >> $env:GITHUB_ENV
