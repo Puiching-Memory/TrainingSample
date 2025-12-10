@@ -338,7 +338,14 @@ jobs:
       shell: pwsh
       run: |
         $ErrorActionPreference = "Stop"
-        choco install -y llvm --version=18.1.8 ninja
+        choco install -y llvm --version=18.1.8
+
+        # Install Ninja manually (Chocolatey package may be unavailable)
+        $ninjaZip = "$env:RUNNER_TEMP\ninja.zip"
+        Invoke-WebRequest -Uri https://github.com/ninja-build/ninja/releases/download/v1.12.1/ninja-win.zip -OutFile $ninjaZip
+        Expand-Archive -Path $ninjaZip -DestinationPath $env:RUNNER_TEMP\ninja
+        $ninjaBin = "$env:RUNNER_TEMP\ninja"
+        echo "PATH=$ninjaBin;$env:PATH" >> $env:GITHUB_ENV
 
         # Point bindgen at LLVM 18
         $llvmBin = "C:\\Program Files\\LLVM\\bin"
