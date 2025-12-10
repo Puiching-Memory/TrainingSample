@@ -394,6 +394,12 @@ jobs:
         echo "OPENCV_LINK_LIBS=static=opencv_world412" >> $env:GITHUB_ENV
         echo "OPENCV_VERSION=4.12.0" >> $env:GITHUB_ENV
         echo "OPENCV_DISABLE_PROBES=pkg_config" >> $env:GITHUB_ENV
+        # Point CMake-based probes to the installed config package
+        $cmakeConfig = Join-Path $work "x64/vc17/lib/cmake/opencv4"
+        if (-not (Test-Path $cmakeConfig)) {
+          $cmakeConfig = Join-Path $work "x64/vc16/lib/cmake/opencv4"
+        }
+        echo "OpenCV_DIR=$cmakeConfig" >> $env:GITHUB_ENV
 
 
 
